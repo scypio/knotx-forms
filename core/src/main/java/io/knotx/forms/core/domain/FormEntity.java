@@ -24,6 +24,7 @@ import io.knotx.fragments.FragmentContentExtractor;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
+import java.text.Normalizer.Form;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
@@ -48,10 +49,9 @@ public class FormEntity {
   private Map<String, String> signalToUrl;
 
   public static FormEntity from(Fragment fragment, FormsKnotOptions options) {
-    FormEntity result = null;
     Element scriptDocument = FragmentContentExtractor.unwrapFragmentContent(fragment);
     try {
-      result = new FormEntity()
+      return new FormEntity()
           .fragment(fragment)
           .identifier(getFormIdentifier(fragment))
           .adapterParams(getAdapterParams(scriptDocument))
@@ -63,11 +63,8 @@ public class FormEntity {
           .findFirst()
           .get();
       fragment.failure(knotId, e);
-      if (!fragment.fallback().isPresent()) {
-        throw new FormConfigurationException(e.getMessage(), e.getCause(), fragment.fallback().isPresent());
-      }
+      throw new FormConfigurationException(e.getMessage(), e.getCause(), fragment.fallback().isPresent());
     }
-    return result;
   }
 
   public Fragment fragment() {
@@ -97,7 +94,7 @@ public class FormEntity {
   }
 
   private static Optional<String> getFormIdentifierFromRequest(KnotContext knotContext,
-      String formIdAttrName) {
+                                                               String formIdAttrName) {
     return Optional.ofNullable(
         knotContext.getClientRequest().getFormAttributes().get(formIdAttrName));
   }
@@ -159,7 +156,7 @@ public class FormEntity {
   }
 
   private static FormsKnotDefinition getAdapterMetadata(FormsKnotOptions options,
-      String adapter) {
+                                                        String adapter) {
     return options.getAdapters().stream()
         .filter(metadata -> metadata.getName().equals(adapter))
         .findFirst()

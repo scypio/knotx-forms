@@ -15,33 +15,23 @@
  */
 package io.knotx.forms.core.domain;
 
-import io.knotx.dataobjects.KnotContext;
-import io.knotx.forms.core.FormsKnotOptions;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-public final class FormsFactory {
+public final class FormEntityDeduplicator {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(FormsFactory.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(FormEntityDeduplicator.class);
 
-  private FormsFactory() {
+  private FormEntityDeduplicator() {
     // util class
   }
 
-  public static List<FormEntity> create(KnotContext context, FormsKnotOptions options) {
-    List<FormEntity> forms = context.getFragments().stream()
-        .filter(f -> f.knots().stream().anyMatch(id -> id.startsWith(
-            FormConstants.FRAGMENT_KNOT_PREFIX)))
-        .map(f -> FormEntity.from(f, options))
-        .filter(Objects::nonNull)
-        .collect(Collectors.toList());
-
+  public static List<FormEntity> uniqueFormEntities(List<FormEntity> forms) {
     if (formIdentifiersAreNotUnique(forms)) {
       LOGGER.error("Form identifiers are not unique [{}]", forms.stream().map(FormEntity::identifier).toArray());
       Set<String> duplicates = findDuplicateIds(forms);
@@ -55,7 +45,6 @@ public final class FormsFactory {
         throw new FormConfigurationException("Form identifiers are not unique!", fallbackDetected);
       }
     }
-
     return forms;
   }
 
@@ -74,7 +63,7 @@ public final class FormsFactory {
   private static void markDuplicatesAsFailed(List<FormEntity> forms, Set<String> duplicateIds) {
     forms.stream()
         .filter(f -> duplicateIds.contains(f.identifier()))
-        .forEach(FormsFactory::markDuplicateAsFailed);
+        .forEach(FormEntityDeduplicator::markDuplicateAsFailed);
   }
 
   private static void markDuplicateAsFailed(FormEntity form) {

@@ -26,8 +26,9 @@ import io.knotx.forms.api.FormsAdapterResponse;
 import io.knotx.forms.core.domain.FormConfigurationException;
 import io.knotx.forms.core.domain.FormConstants;
 import io.knotx.forms.core.domain.FormEntity;
+import io.knotx.forms.core.domain.FormProcessingException;
 import io.knotx.forms.core.domain.FormTransformer;
-import io.knotx.forms.core.domain.FormsFactory;
+import io.knotx.forms.core.domain.FormEntityDeduplicator;
 import io.knotx.http.AllowedHeadersFilter;
 import io.knotx.http.MultiMapCollector;
 import io.knotx.knot.AbstractKnotProxy;
@@ -67,20 +68,38 @@ public class FormsKnotProxy extends AbstractKnotProxy {
 
   @Override
   public Single<KnotContext> processRequest(final KnotContext knotContext) {
+
     return Single.just(knotContext)
-        .map(context -> FormsFactory.create(context, options))
-        .flatMap(forms -> {
-          if (knotContext.getClientRequest().getMethod() == HttpMethod.GET) {
-            return Single.just(handleGetMethod(forms, knotContext));
-          } else {
-            FormEntity current = currentForm(forms, knotContext);
-            return callFormsAdapter(knotContext, current)
-                .map(response -> processAdapterResponse(knotContext, forms, current, response));
-          }
-        })
+        .flattenAsObservable(KnotContext::getFragments)
+        .filter(f -> f.knots().stream().anyMatch(id -> id.startsWith(
+            FormConstants.FRAGMENT_KNOT_PREFIX)))
+        .map(f -> Optional.of(FormEntity.from(f, options)))
+        .onErrorReturn(this::handleFallback)
+        .filter(Optional::isPresent)
+        .map(Optional::get)
+        .toList()
+        .map(FormEntityDeduplicator::uniqueFormEntities)
+        .flatMap(forms -> processForms(forms, knotContext))
         .onErrorReturn(error -> processError(knotContext, error));
   }
 
+  private Single<KnotContext> processForms(List<FormEntity> forms, KnotContext knotContext) {
+    if (knotContext.getClientRequest().getMethod() == HttpMethod.GET) {
+      return Single.just(handleGetMethod(forms, knotContext));
+    } else {
+      FormEntity current = currentForm(forms, knotContext);
+      return callFormsAdapter(knotContext, current)
+          .map(response -> processAdapterResponse(knotContext, forms, current, response));
+    }
+  }
+
+  private Optional<FormEntity> handleFallback(Throwable error) {
+    if (isFallbackDefined(error)) {
+      return Optional.empty();
+    } else {
+      throw new FormProcessingException(error);
+    }
+  }
 
   @Override
   protected boolean shouldProcess(Set<String> knots) {
